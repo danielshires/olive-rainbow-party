@@ -24,11 +24,15 @@
   .score { font-size: 46px; font-weight: 800; color: #222; margin: 4px 0; }
   button { font: inherit; font-size: 22px; font-weight: 800; color: #fff; background: #ff4d6d; border: 4px solid #222;
     border-radius: 999px; padding: 12px 34px; margin-top: 12px; box-shadow: 0 5px 0 #222; cursor: pointer; }
+  #mute { position: fixed; top: 58px; right: 12px; margin: 0; padding: 0; width: 44px; height: 44px; font-size: 22px; line-height: 1;
+    background: #fff; border-width: 3px; box-shadow: 0 3px 0 #222; }
   button:active { transform: translateY(4px); box-shadow: 0 1px 0 #222; }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+
+<button id="mute" aria-label="Sound on or off">🔊</button>
 
 <div class="overlay" id="start">
   <div class="card">
@@ -64,7 +68,7 @@
   var player = { x: 0, tx: 0, face: 1, squash: 0, wobble: 0 };
   var items = [], parts = [], clouds = [];
   var keys = {};
-  var audio = null;
+  var audio = null, muted = false;
 
   try { best = +localStorage.getItem('olivePizzaBest') || 0; } catch (e) {}
 
@@ -83,16 +87,31 @@
 
   // ---------- sound ----------
   function beep(freq, dur, type, vol) {
-    if (!audio) return;
+    if (!audio || muted) return;
     try {
       var o = audio.createOscillator(), g = audio.createGain();
       o.type = type || 'sine'; o.frequency.value = freq;
-      g.gain.setValueAtTime(vol || 0.12, audio.currentTime);
+      g.gain.setValueAtTime(vol || 0.3, audio.currentTime);
       g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + dur);
       o.connect(g); g.connect(audio.destination);
       o.start(); o.stop(audio.currentTime + dur);
     } catch (e) {}
   }
+
+  function unlockAudio() {
+    try {
+      // lets iPhones play the sounds even when the ring/silent switch is on silent
+      if (navigator.audioSession) navigator.audioSession.type = 'playback';
+      if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state !== 'running') audio.resume();
+    } catch (e) {}
+  }
+  window.addEventListener('pointerdown', unlockAudio);
+  window.addEventListener('touchend', unlockAudio);
+  document.getElementById('mute').addEventListener('click', function () {
+    muted = !muted; this.textContent = muted ? '🔇' : '🔊';
+    if (!muted) beep(660, 0.12);
+  });
 
   // ---------- input ----------
   function point(e) { player.tx = Math.max(S / 2, Math.min(W - S / 2, e.clientX)); }
@@ -103,7 +122,7 @@
 
   // ---------- game ----------
   function startGame() {
-    try { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch (e) {}
+    unlockAudio();
     document.getElementById('start').hidden = true;
     document.getElementById('over').hidden = true;
     items = []; parts = []; score = 0; timeLeft = ROUND; spawnIn = 0.4;
@@ -179,7 +198,7 @@
       if (Math.abs(it.x - player.x) < S * 0.8 && Math.abs(it.y - py) < S * 0.6) {
         if (it.type === 'yuck') {
           score = Math.max(0, score - 1); player.wobble = 1;
-          burst(it.x, it.y, 0, 'Yuck!'); beep(140, 0.25, 'sawtooth', 0.08);
+          burst(it.x, it.y, 0, 'Yuck!'); beep(140, 0.25, 'sawtooth', 0.18);
         } else {
           var pts = it.type === 'rainbow' ? 5 : 1;
           score += pts; player.squash = 1;
